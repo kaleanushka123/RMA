@@ -1,0 +1,146 @@
+################### slurm installation #####################################
+ # need 3 machin with 2 addapter Nat and Host
+ # as 1 master and 2 are clent
+
+# from master do nfs to both client
+# yum -y  install nfs-utils
+# systemctl start nfs-server rpcbind
+# systemctl enable nfs-server rpcbind
+
+# chmode 777 /home
+# vim /etc/exports
+  \______ /home *(rw,no_root_squash)
+
+# export -a    or -r
+do above command on Master
+#####################################################
+
+# on clients  (1 & 2)
+
+# yum -y install nfs-utils
+# mount -t nfs ip of master(host only):/home /home
+
+#################### do password-less ssh #################################
+
+# on master:
+# ssh-keygen
+# ssh-copy-id root@client1(host only ip)
+# ssh root@client1(host only ip)
+#ssh-copy-id root@client2(host only ip)
+#ssh root@client2(host only ip)
+####################################### munge installation  ##################################
+************ on master  *******************
+1. vim /etc/hosts
+
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+10.10.10.137 master
+10.10.10.138 client1
+10.10.10.139 client2
+
+2. rsync /etc/hosts root@client1:/etc/hosts
+3.rsync /etc/hosts root@client2:/etc/hosts
+
+4. yum install epel-release
+5. yum install munge munge-libs munge-devel -y  __________ run this command on all 3 machin
+#on master
+6. /usr/sbin/create-munge-key -r
+
+7.  scp /etc/munge/munge.key client1:/etc/munge
+8.  scp /etc/munge/munge.key client2:/etc/munge
+9.  wget https://download.schedmd.com/slurm/slurm-20.11.9.tar.bz2
+10.yum install rpm-build
+
+* on all machins
+11.yum install pam-devel python3 readline-devel perl-ExtUtils-MakeMaker gcc mysql-devel
+12.rpmbuild -ta slurm-20.11.9.tar.bz2 
+[root@master ~]# export SLURMUSER=900
+[root@master ~]# groupadd -g $SLURMUSER slurm
+[root@master ~]# useradd -m -c "SLURM workload manager" -d /var/lib/slurm -u $SLURMUSER -g slurm -s /bin/bash slurm
+[root@master ~]# tail /etc/slurm
+tail: cannot open ‘/etc/slurm’ for reading: No such file or directory
+[root@master ~]# ls /root/rpmbuild/RPMS/x86_64/
+slurm-20.11.9-1.el7.x86_64.rpm           slurm-example-configs-20.11.9-1.el7.x86_64.rpm  slurm-pam_slurm-20.11.9-1.el7.x86_64.rpm  slurm-slurmd-20.11.9-1.el7.x86_64.rpm
+slurm-contribs-20.11.9-1.el7.x86_64.rpm  slurm-libpmi-20.11.9-1.el7.x86_64.rpm           slurm-perlapi-20.11.9-1.el7.x86_64.rpm    slurm-slurmdbd-20.11.9-1.el7.x86_64.rpm
+slurm-devel-20.11.9-1.el7.x86_64.rpm     slurm-openlava-20.11.9-1.el7.x86_64.rpm         slurm-slurmctld-20.11.9-1.el7.x86_64.rpm  slurm-torque-20.11.9-1.el7.x86_64.rpm
+########### on master  
+
+[root@master ~]# ls /root/rpmbuild/RPMS/x86_64/
+[root@master ~]# mkdir /home/rpms
+[root@master ~]# cd /root/rpmbuild/RPMS/x86_64/
+[root@master x86_64]# ls
+[root@master x86_64]# cp * /home/rpms/
+[root@master x86_64]# ls /home/rpms/
+[root@master ~]# cd /home/rpms
+[root@master rpms]# yum --nogpgcheck localinstall * -y
+13. rpm -qa | grep slurm | wc -l
+
+### on client:
+
+# export SLURMUSER=900
+
+#on master just check with #sinfo 
+[root@master ~]# sinfo
+PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+standard*    up   infinite      2  down* client[1-2]
+
+# if state is down*  then on all machin stop and disable firewalld, restart slurmctld on master and slurmd on both client
+  ifdown and ifup ip then do following command
+
+[root@master ~]# scontrol update node=client1 state=idle
+[root@master ~]# scontrol update node=client2 state=idle
+[root@master ~]# sinfo
+PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+standard*    up   infinite      2   idle client[1-2]
+
+[root@master ~]# srun -w client1 --pty /bin/bash
+
+# scontrol update node=client1 state=down reason=main
+# sinfo -R
+[root@master ~]# vim demo.sh     |\___________ to submite job use following script
+
+#!/bin/bash
+# Job name:
+#SBATCH --job-name=cdac
+#
+# Account:
+#SBATCH --account=account_name
+#
+# Partition:
+#SBATCH --partition=standard
+#
+# Request one node:
+#SBATCH --nodes=2
+#
+# Specify one task:
+#SBATCH --ntasks-per-node=1
+#
+# Number of processors for single task needed for use case (example):
+#SBATCH --cpus-per-task=1
+#
+# Wall clock limit:
+#SBATCH --time=00:05:00
+
+#
+## Command(s) to run (example):
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+begin
+sleep 30820
+:wq!(save)
+[root@master ~]# sbatch demo.sh                   \____________ to run sbatch script
+Submitted batch job 5
+[root@master ~]# scontrol show job 5
+JobId=5 JobName=cdac
+   UserId=root(0) GroupId=root(0) MCS_label=N/A
+
+
+############ slurum installation site   ################################################################
+
+                      https://southgreenplatform.github.io/trainings/hpc/slurminstallation/
+                        # slurm installation ---github
+##################################################################################################################
+
+
+https://github.com/kaleanushka123/repo-1234.git
+
+
